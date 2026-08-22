@@ -553,10 +553,10 @@ async function loadInvoiceRefList() {
 
 function populateRefInvoiceDropdown() {
   const statusLabel = { paid: '✓ Lunas', unpaid: 'Belum Bayar', installment: 'Cicilan' };
-  const opts = invoiceRefList.map(inv => {
+  const opts = invoiceRefList.map((inv, idx) => {
     const who = inv.student_parent || inv.student_name || '';
     const st = statusLabel[inv.payment_status] || inv.payment_status || '';
-    return `<option value="${esc(inv.invoice_number)}" data-who="${esc(who)}">${esc(inv.invoice_number)} · ${esc(who)} · ${rp(inv.amount)}${st ? ' · '+esc(st) : ''}</option>`;
+    return `<option value="${esc(inv.invoice_number)}" data-idx="${idx}">${esc(inv.invoice_number)} · ${esc(who)} · ${rp(inv.amount)}${st ? ' · '+esc(st) : ''}</option>`;
   }).join('');
   document.querySelectorAll('.fRefQuickSelect').forEach(sel => {
     sel.innerHTML = '<option value="">— Pilih dari daftar invoice —</option>' + opts;
@@ -566,10 +566,18 @@ function populateRefInvoiceDropdown() {
 function quickFillRefInvoice() {
   const sel = document.getElementById('fRefQuick');
   const opt = sel.selectedOptions[0];
-  if (sel.value) {
-    document.getElementById('fRef').value = sel.value;
-    const dariEl = document.getElementById('fDari');
-    if (dariEl && !dariEl.value.trim() && opt.dataset.who) dariEl.value = opt.dataset.who;
+  if (sel.value && opt.dataset.idx !== undefined) {
+    const inv = invoiceRefList[Number(opt.dataset.idx)];
+    if (inv) {
+      document.getElementById('fRef').value = inv.invoice_number || '';
+      document.getElementById('fDari').value = inv.student_parent || inv.student_name || '';
+      document.getElementById('fJumlah').value = fmtThousand(inv.amount || 0);
+      document.getElementById('fUntuk').value = `Pembayaran invoice ${inv.invoice_number} — a.n. ${inv.student_name || ''}`.trim();
+      document.getElementById('fPenerima').value = 'Elis Rosmiati, S.Pd.';
+      document.getElementById('fCreator').value = 'Admission';
+      updateTerbilang();
+      renderLivePreview();
+    }
   }
   sel.selectedIndex = 0;
 }
