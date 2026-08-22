@@ -66,6 +66,10 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--outer
 .wrap{max-width:1200px;margin:0 auto;padding:16px 14px 40px;}
 .tab-content{display:none;}
 .tab-content.active{display:block;}
+.tab-slider-outer{overflow:hidden;width:100%;position:relative;}
+.tab-slider-track{display:flex;width:200%;transition:transform .35s cubic-bezier(.4,0,.2,1);will-change:transform;}
+.tab-slider-track.no-transition{transition:none!important;}
+.tab-slider-pane{width:50%;flex-shrink:0;min-width:0;padding:0;overflow-x:hidden;}
 
 /* SECTION */
 .sec{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,0.08);transition:background .3s,border-color .3s;}
@@ -126,11 +130,9 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   .kw-row-name{margin-top:0;}
   .kw-row-chevron{display:flex;align-items:center;margin-left:auto;flex-shrink:0;align-self:center;}
 
-  /* Tombol aksi (Reset/Simpan/Cetak) jadi ikon saja, tanpa teks */
-  .actions{justify-content:center;}
-  .actions .btn-label{display:none;}
-  .actions .btn{flex:0 0 auto;min-width:0;width:48px;height:48px;padding:0;justify-content:center;}
-  .actions .btn svg{width:18px;height:18px;}
+  /* Tombol aksi (Reset/Simpan/Cetak) — full-width bertumpuk, teks tetap terlihat */
+  .actions{flex-direction:column-reverse;gap:10px;}
+  .actions .btn{width:100%;height:48px;font-size:14px;justify-content:center;}
 }
 
 /* DETAIL SHEET (dibuka saat baris riwayat di-tap, mode mobile) */
@@ -281,7 +283,10 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
 </div>
 
 <!-- ═══════════════ TAB: BUAT KUITANSI ═══════════════ -->
-<div id="tab-buat" class="tab-content active">
+<div class="tab-slider-outer" id="tabSliderOuter">
+<div class="tab-slider-track" id="tabSliderTrack">
+
+<div id="tab-buat" class="tab-slider-pane">
 
   <div class="sec">
     <div class="sec-title">
@@ -398,7 +403,7 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
 </div><!-- /tab-buat -->
 
 <!-- ═══════════════ TAB: RIWAYAT ═══════════════ -->
-<div id="tab-riwayat" class="tab-content">
+<div id="tab-riwayat" class="tab-slider-pane">
 
   <div class="sec">
     <div class="filter-bar">
@@ -412,6 +417,9 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   </div>
 
 </div><!-- /tab-riwayat -->
+
+</div><!-- /tab-slider-track -->
+</div><!-- /tab-slider-outer -->
 
 </div><!-- /wrap -->
 </div><!-- /container -->
@@ -563,6 +571,23 @@ function populateRefInvoiceDropdown() {
   });
 }
 
+function buildInvoiceItemsDesc(inv) {
+  let items = inv.invoice_items;
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items); } catch(e) { items = []; }
+  }
+  if (!items || !items.length) {
+    return `Pembayaran invoice ${inv.invoice_number}`;
+  }
+  const parts = items.map(it => {
+    let s = (it.label || '').trim();
+    if (it.type && it.type !== '—') s += ' - ' + it.type;
+    if (it.dur) s += ' - ' + it.dur + ' Bulan';
+    return s;
+  }).filter(Boolean);
+  return 'Pembayaran untuk program ' + parts.join('; ');
+}
+
 function quickFillRefInvoice() {
   const sel = document.getElementById('fRefQuick');
   const opt = sel.selectedOptions[0];
@@ -572,7 +597,7 @@ function quickFillRefInvoice() {
       document.getElementById('fRef').value = inv.invoice_number || '';
       document.getElementById('fDari').value = inv.student_parent || inv.student_name || '';
       document.getElementById('fJumlah').value = fmtThousand(inv.amount || 0);
-      document.getElementById('fUntuk').value = `Pembayaran invoice ${inv.invoice_number} — a.n. ${inv.student_name || ''}`.trim();
+      document.getElementById('fUntuk').value = buildInvoiceItemsDesc(inv);
       document.getElementById('fPenerima').value = 'Elis Rosmiati, S.Pd.';
       document.getElementById('fCreator').value = 'Admission';
       updateTerbilang();
@@ -1283,11 +1308,113 @@ function togglePreview() {
 // ══════════════════════════════════════
 // UI GENERAL — tab, menu, dark mode, toast
 // ══════════════════════════════════════
+const TAB_ORDER = ['buat', 'riwayat'];
+let _curTabIdx = 0;
+
 function switchTab(tab) {
+  const idx = TAB_ORDER.indexOf(tab);
+  if (idx < 0) return;
+  _curTabIdx = idx;
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.getElementById('tab-buat').classList.toggle('active', tab === 'buat');
-  document.getElementById('tab-riwayat').classList.toggle('active', tab === 'riwayat');
+  const track = document.getElementById('tabSliderTrack');
+  if (track) {
+    track.classList.remove('no-transition');
+    track.style.transform = `translateX(-${idx * 50}%)`;
+  }
+  const pane = document.getElementById('tab-' + tab);
+  if (pane) pane.scrollTop = 0;
+  window.scrollTo(0, 0);
 }
+
+// Swipe drag real-time antar tab (pola sama seperti invoice-mb.html)
+(function initTabSwipe() {
+  let startX = 0, startY = 0, lastX = 0, startTime = 0, dragging = false, lockDir = null;
+  const MIN_DRAG_PX = 8;
+  const SNAP_PCT = 0.35;
+  const VEL_SNAP = 0.4;
+
+  const track = () => document.getElementById('tabSliderTrack');
+  const outer = () => document.getElementById('tabSliderOuter');
+  function baseOffset() { return _curTabIdx * 50; }
+
+  function hasHScrollParent(el) {
+    let node = el;
+    while (node && node !== document.body) {
+      const st = window.getComputedStyle(node);
+      const ox = st.overflowX;
+      if ((ox === 'auto' || ox === 'scroll') && node.scrollWidth > node.clientWidth + 2) return true;
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  document.addEventListener('touchstart', e => {
+    if (document.querySelector('.modal-overlay.open')) return;
+    startX = lastX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+    dragging = true;
+    lockDir = null;
+    const t = track();
+    if (t) t.classList.add('no-transition');
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    lastX = e.touches[0].clientX;
+
+    if (!lockDir && (Math.abs(dx) > MIN_DRAG_PX || Math.abs(dy) > MIN_DRAG_PX)) {
+      if (Math.abs(dy) > Math.abs(dx) || hasHScrollParent(e.target)) {
+        lockDir = 'y';
+      } else {
+        lockDir = 'x';
+      }
+    }
+    if (lockDir !== 'x') return;
+
+    const totalW = outer()?.offsetWidth || window.innerWidth;
+    const dragPct = (dx / totalW) * 100;
+    let offset = baseOffset() - dragPct;
+    if (offset < 0) offset = offset * 0.15;
+    if (offset > 50) offset = 50 + (offset - 50) * 0.15;
+    const t = track();
+    if (t) t.style.transform = `translateX(-${offset}%)`;
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!dragging) { dragging = false; return; }
+    dragging = false;
+
+    const t = track();
+    if (lockDir !== 'x') {
+      lockDir = null;
+      if (t) { t.classList.remove('no-transition'); t.style.transform = `translateX(-${baseOffset()}%)`; }
+      return;
+    }
+    lockDir = null;
+    if (t) t.classList.remove('no-transition');
+
+    const dx = lastX - startX;
+    const dt = Date.now() - startTime;
+    const velocity = Math.abs(dx) / dt;
+    const totalW = outer()?.offsetWidth || window.innerWidth;
+    const pct = Math.abs(dx) / totalW;
+
+    let nextIdx = _curTabIdx;
+    const goRight = dx < 0;
+    const goLeft = dx > 0;
+
+    if (pct > SNAP_PCT || velocity > VEL_SNAP) {
+      if (goRight && _curTabIdx < TAB_ORDER.length - 1) nextIdx++;
+      if (goLeft && _curTabIdx > 0) nextIdx--;
+    }
+
+    switchTab(TAB_ORDER[nextIdx]);
+  }, { passive: true });
+})();
+
 function toggleMenu() { document.getElementById('menuPop').classList.toggle('open'); }
 function closeMenu() { document.getElementById('menuPop').classList.remove('open'); }
 document.addEventListener('click', e => {
