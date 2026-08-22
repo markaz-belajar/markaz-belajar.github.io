@@ -125,6 +125,12 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   .kw-row-amt-m{display:block;font-family:'Geist Mono',monospace;font-size:19px;font-weight:800;color:var(--text);margin:7px 0 3px;letter-spacing:-.01em;}
   .kw-row-name{margin-top:0;}
   .kw-row-chevron{display:flex;align-items:center;margin-left:auto;flex-shrink:0;align-self:center;}
+
+  /* Tombol aksi (Reset/Simpan/Cetak) jadi ikon saja, tanpa teks */
+  .actions{justify-content:center;}
+  .actions .btn-label{display:none;}
+  .actions .btn{flex:0 0 auto;min-width:0;width:48px;height:48px;padding:0;justify-content:center;}
+  .actions .btn svg{width:18px;height:18px;}
 }
 
 /* DETAIL SHEET (dibuka saat baris riwayat di-tap, mode mobile) */
@@ -290,6 +296,9 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
       </div>
       <div>
         <label>Ref Invoice <span style="opacity:.6;">(opsional)</span></label>
+        <select id="fRefQuick" class="fRefQuickSelect" onchange="quickFillRefInvoice()" style="margin-bottom:7px;">
+          <option value="">— Pilih dari daftar invoice —</option>
+        </select>
         <input id="fRef" type="text" placeholder="mis. INV/2026/07/012 atau kosongkan">
       </div>
       <div>
@@ -372,17 +381,17 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   </div>
 
   <div class="actions">
-    <button class="btn btn-ghost" onclick="resetForm()">
+    <button class="btn btn-ghost" onclick="resetForm()" title="Reset">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
-      Reset
+      <span class="btn-label">Reset</span>
     </button>
-    <button class="btn btn-accent" onclick="saveKuitansi(false)">
+    <button class="btn btn-accent" onclick="saveKuitansi(false)" title="Simpan">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Simpan
+      <span class="btn-label">Simpan</span>
     </button>
-    <button class="btn btn-success" onclick="saveKuitansi(true)">
+    <button class="btn btn-success" onclick="saveKuitansi(true)" title="Simpan & Cetak PDF">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      Simpan &amp; Cetak PDF
+      <span class="btn-label">Simpan &amp; Cetak PDF</span>
     </button>
   </div>
 
@@ -416,7 +425,11 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
       Edit Kuitansi
     </div>
     <div class="modal-field"><label>No. Kuitansi</label><input id="eNo" type="text"></div>
-    <div class="modal-field"><label>Ref Invoice</label><input id="eRef" type="text"></div>
+    <div class="modal-field">
+      <label>Ref Invoice</label>
+      <select class="fRefQuickSelect" onchange="document.getElementById('eRef').value=this.value;this.selectedIndex=0;" style="margin-bottom:7px;"></select>
+      <input id="eRef" type="text">
+    </div>
     <div class="modal-field"><label>Tanggal</label><input id="eDate" type="date"></div>
     <div class="modal-field"><label>Diterima Dari</label><input id="eDari" type="text"></div>
     <div class="modal-field"><label>Sejumlah Uang (Rp)</label><input id="eJumlah" type="text" inputmode="numeric"></div>
@@ -520,6 +533,45 @@ let GAS_URL = 'https://script.google.com/macros/s/AKfycbzMziCavEtxpMEVucvRWNmfwR
 
 function hasGasUrl() {
   return GAS_URL && GAS_URL.startsWith('https://script.google.com') && GAS_URL.indexOf('GANTI_DENGAN') === -1;
+}
+
+// URL backend app Invoice (invoice-mb.html) — dipakai HANYA untuk membaca daftar
+// invoice ke dropdown "Ref Invoice", tidak terkait dengan penyimpanan data Kuitansi.
+const INVOICE_GAS_URL = 'https://script.google.com/macros/s/AKfycbxbyZtQyblDlDZgRyRLy_grf-W66O7nWwsL9vn1iI46GENgWtjAkcg5u7-LeBERXbiX7A/exec';
+let invoiceRefList = [];
+
+async function loadInvoiceRefList() {
+  try {
+    const resp = await fetch(`${INVOICE_GAS_URL}?action=getInvoices&t=${Date.now()}`, { cache: 'no-store' });
+    const data = await resp.json();
+    invoiceRefList = (data.invoices || []).sort((a,b) => (b.invoice_number||'').localeCompare(a.invoice_number||''));
+    populateRefInvoiceDropdown();
+  } catch(e) {
+    // Diam-diam gagal — dropdown tetap kosong, field Ref Invoice tetap bisa diisi manual.
+  }
+}
+
+function populateRefInvoiceDropdown() {
+  const statusLabel = { paid: '✓ Lunas', unpaid: 'Belum Bayar', installment: 'Cicilan' };
+  const opts = invoiceRefList.map(inv => {
+    const who = inv.student_parent || inv.student_name || '';
+    const st = statusLabel[inv.payment_status] || inv.payment_status || '';
+    return `<option value="${esc(inv.invoice_number)}" data-who="${esc(who)}">${esc(inv.invoice_number)} · ${esc(who)} · ${rp(inv.amount)}${st ? ' · '+esc(st) : ''}</option>`;
+  }).join('');
+  document.querySelectorAll('.fRefQuickSelect').forEach(sel => {
+    sel.innerHTML = '<option value="">— Pilih dari daftar invoice —</option>' + opts;
+  });
+}
+
+function quickFillRefInvoice() {
+  const sel = document.getElementById('fRefQuick');
+  const opt = sel.selectedOptions[0];
+  if (sel.value) {
+    document.getElementById('fRef').value = sel.value;
+    const dariEl = document.getElementById('fDari');
+    if (dariEl && !dariEl.value.trim() && opt.dataset.who) dariEl.value = opt.dataset.who;
+  }
+  sel.selectedIndex = 0;
 }
 
 async function gasPost(action, payload) {
@@ -1328,6 +1380,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAll();
   renderLivePreview();
   initDetailPopoverEvents();
+  loadInvoiceRefList();
 
   const verifyNo = new URLSearchParams(window.location.search).get('verify');
   if (verifyNo) runVerification(verifyNo);
