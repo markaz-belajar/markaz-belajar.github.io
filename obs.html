@@ -646,7 +646,10 @@ function renderASDView(s, rec) {
   document.getElementById('sheetBody').innerHTML = html;
 
   // Siapkan WA data
-  const formUrl = `${FORM_ORTU}?gen=${encodeURIComponent(genId)}&nama=${encodeURIComponent(s.nama)}&ibu=${encodeURIComponent(namaIbu)}&wa=${encodeURIComponent(waIbu)}`;
+  // ⭐ DIPERBARUI: link sekarang cuma bawa "gen" (kode singkat) — nama & nomor WA
+  // TIDAK dikirim lewat URL demi privasi. Form penerima (obs.autism.anak.html)
+  // mengambil data itu sendiri dari server berdasarkan genId ini.
+  const formUrl = `${FORM_ORTU}?gen=${encodeURIComponent(genId)}`;
   const waNum = normalizeWA(waIbu);
   const namaDepan = s.nama.split(' ')[0];
   const ibuDepan  = namaIbu.split(' ')[0];
