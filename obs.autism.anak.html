@@ -381,6 +381,16 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
     </div>
   </div>
 
+  <!-- ⭐ BARU: Banner konfirmasi data auto-terisi -->
+  <div id="auto-confirm-banner" style="display:none;background:#e8f4fc;border:1.5px solid #0686c7;border-radius:14px;padding:14px 16px;margin-bottom:14px;">
+    <div style="font-weight:700;font-size:13.5px;color:#055a96;margin-bottom:4px;">✅ Data sudah kami isi otomatis</div>
+    <div style="font-size:12.5px;color:#0686c7;line-height:1.6;margin-bottom:12px;">Silakan periksa sekali lagi data di atas. Apakah semua sudah benar?</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="confirmAutoData(true)" style="flex:1;padding:10px;border:none;border-radius:10px;background:#0686c7;color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;">Ya, lanjut ke pertanyaan</button>
+      <button onclick="confirmAutoData(false)" style="padding:10px 14px;border:1.5px solid #0686c7;border-radius:10px;background:#fff;color:#0686c7;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;">Perbaiki dulu</button>
+    </div>
+  </div>
+
   <!-- AGE PICKER -->
   <div class="age-card" id="age-card">
     <div class="age-card-title">
@@ -407,6 +417,8 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
       </button>
     </div>
   </div>
+
+
 
   <!-- FLASHCARD FULL-SCREEN OVERLAY -->
   <div class="fc-overlay" id="fc-overlay">
@@ -1224,9 +1236,11 @@ function hitungSkor(answersObj, items) {
 
 // ── Load dari URL params yang dikirim obs.html ──
 // ⭐ DIPERBARUI: link sekarang cuma bawa "gen" (kode singkat), TIDAK ada
-// nama/nomor WA di URL demi privasi. Nama & nomor WA diambil dari server
-// berdasarkan "gen" itu (data ini sudah tersimpan di server sejak guru
-// klik "Kirim Form ke Orang Tua").
+// nama/nomor WA di URL demi privasi. Semua data (nama, usia, jenis kelamin,
+// nama ibu, WA) diambil dari server berdasarkan "gen" itu, lalu ditampilkan
+// sebagai banner konfirmasi sebelum lanjut ke pertanyaan.
+window._autoBracket = null;
+
 function loadFromURLParams() {
   const p = new URLSearchParams(window.location.search);
   const gen = p.get('gen'), age = p.get('age');
@@ -1237,27 +1251,73 @@ function loadFromURLParams() {
   window._genId = gen || '';
 
   if(gen){
-    // Ambil nama anak, nama ibu, nomor WA dari server (bukan dari URL)
-    apiScreening('getScreeningDetail', { genId: gen }).then(r => {
+    apiScreening('getSiswaByGenId', { genId: gen }).then(r => {
       if(r && r.ok && r.data){
         const d = r.data;
         window._namaIbu = d.namaIbu || '';
         window._waIbu   = d.waIbu || '';
-        if(d.namaAnak){ const el=document.getElementById("f-nama"); if(el){el.value=d.namaAnak;el.disabled=true;el.style.opacity="0.8";} }
-        if(d.namaIbu){ const el=document.getElementById("f-ortu"); if(el){el.value=d.namaIbu;el.disabled=true;el.style.opacity="0.8";} }
+
+        if(d.nama){ const el=document.getElementById("f-nama"); if(el) el.value = d.nama; }
+        if(d.namaIbu){ const el=document.getElementById("f-ortu"); if(el) el.value = d.namaIbu; }
+        if(d.usia){ const el=document.getElementById("f-usia"); if(el) el.value = d.usia; }
+        if(d.kelamin){
+          const el=document.getElementById("f-jk");
+          if(el){
+            const k = String(d.kelamin).toLowerCase();
+            if(k.includes('laki')) el.value = 'Laki-laki';
+            else if(k.includes('perempuan')) el.value = 'Perempuan';
+          }
+        }
+
+        // Tentukan rentang usia otomatis dari usiaTahun
+        let bracket = null;
+        const th = Number(d.usiaTahun);
+        if(!isNaN(th)){
+          if(th>=4 && th<=5) bracket='A';
+          else if(th>=6 && th<=8) bracket='B';
+          else if(th>=9 && th<=10) bracket='C';
+          else if(th>=11 && th<=12) bracket='D';
+        }
+        window._autoBracket = bracket;
+        if(bracket){
+          const btn=document.querySelector(`[data-age="${bracket}"]`);
+          if(btn) btn.classList.add('selected');
+        }
+
+        // Tampilkan banner konfirmasi (field TETAP BISA diedit kalau ada yang salah)
+        const banner = document.getElementById('auto-confirm-banner');
+        if(banner) banner.style.display = 'block';
       }
     }).catch(()=>{});
   }
 
   // Dukungan link lama (kalau masih ada yang beredar)
   if(namaLegacy){ window._namaIbu = window._namaIbu || ibuLegacy || ''; window._waIbu = window._waIbu || waLegacy || '';
-    const el=document.getElementById("f-nama"); if(el){el.value=namaLegacy;el.disabled=true;el.style.opacity="0.8";} }
-  if(ibuLegacy){ const el=document.getElementById("f-ortu"); if(el){el.value=ibuLegacy;el.disabled=true;el.style.opacity="0.8";} }
+    const el=document.getElementById("f-nama"); if(el){el.value=namaLegacy;} }
+  if(ibuLegacy){ const el=document.getElementById("f-ortu"); if(el){el.value=ibuLegacy;} }
 
   if(age && ['A','B','C','D'].includes(age)){
     setTimeout(()=>{ const btn=document.querySelector(`[data-age="${age}"]`); if(btn) btn.click(); },400);
   }
   return true;
+}
+
+// ⭐ BARU: dipanggil dari tombol banner konfirmasi
+function confirmAutoData(ok) {
+  const banner = document.getElementById('auto-confirm-banner');
+  if(banner) banner.style.display = 'none';
+
+  if(ok && window._autoBracket){
+    // Langsung lanjut ke pertanyaan sesuai rentang usia yang terdeteksi
+    const btn = document.querySelector(`[data-age="${window._autoBracket}"]`);
+    if(btn) btn.click();
+  } else if(!ok){
+    // Buka field untuk diedit manual
+    ["f-nama","f-usia","f-jk","f-ortu"].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){ el.disabled=false; el.style.opacity="1"; el.focus && id==='f-nama' && el.focus(); }
+    });
+  }
 }
 
 // ── Override submitForm: tambah API call ──
