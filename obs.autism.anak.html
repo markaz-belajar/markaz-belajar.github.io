@@ -929,12 +929,21 @@ function updateNavBtns() {
   if(prev) prev.disabled = fcIndex === 0;
   if(skip) {
     const isLast = fcIndex === flatQuestions.length - 1;
-    const allAnswered = Object.keys(answers).length === flatQuestions.length;
+    // ⭐ DIPERBAIKI: dulu pakai perbandingan JUMLAH key (Object.keys(answers).length === flatQuestions.length),
+    // yang bisa keliru false-negative. Sekarang cek LANGSUNG tiap pertanyaan sudah terjawab atau belum.
+    const allAnswered = flatQuestions.every(q => answers[q.key] !== undefined);
     if(isLast) {
       skip.innerHTML = `Selesai <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
       skip.style.color = allAnswered ? "var(--green)" : "var(--text-3)";
       skip.style.borderColor = allAnswered ? "#86efac" : "var(--border)";
-      skip.onclick = () => { if(allAnswered) submitForm(); };
+      skip.onclick = () => {
+        if(allAnswered) {
+          submitForm();
+        } else {
+          const belum = flatQuestions.filter(q => answers[q.key] === undefined);
+          alert(`Masih ada ${belum.length} pertanyaan yang belum dijawab. Silakan cek lagi (geser kartu untuk melihat).`);
+        }
+      };
     } else {
       skip.innerHTML = `Lewati <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`;
       skip.style.color = "var(--blue)";
@@ -1214,13 +1223,37 @@ function hitungSkor(answersObj, items) {
 }
 
 // ── Load dari URL params yang dikirim obs.html ──
+// ⭐ DIPERBARUI: link sekarang cuma bawa "gen" (kode singkat), TIDAK ada
+// nama/nomor WA di URL demi privasi. Nama & nomor WA diambil dari server
+// berdasarkan "gen" itu (data ini sudah tersimpan di server sejak guru
+// klik "Kirim Form ke Orang Tua").
 function loadFromURLParams() {
   const p = new URLSearchParams(window.location.search);
-  const gen=p.get('gen'), nama=p.get('nama'), ibu=p.get('ibu'), wa=p.get('wa'), age=p.get('age');
-  if(!gen && !nama) return false;
-  window._genId=gen||''; window._namaIbu=ibu||''; window._waIbu=wa||'';
-  if(nama){const el=document.getElementById("f-nama");if(el){el.value=nama;el.disabled=true;el.style.opacity="0.8";}}
-  if(ibu){const el=document.getElementById("f-ortu");if(el){el.value=ibu;el.disabled=true;el.style.opacity="0.8";}}
+  const gen = p.get('gen'), age = p.get('age');
+  // Kompatibilitas mundur: kalau ada link LAMA yang masih bawa nama/ibu/wa langsung, tetap didukung
+  const namaLegacy = p.get('nama'), ibuLegacy = p.get('ibu'), waLegacy = p.get('wa');
+
+  if(!gen && !namaLegacy) return false;
+  window._genId = gen || '';
+
+  if(gen){
+    // Ambil nama anak, nama ibu, nomor WA dari server (bukan dari URL)
+    apiScreening('getScreeningDetail', { genId: gen }).then(r => {
+      if(r && r.ok && r.data){
+        const d = r.data;
+        window._namaIbu = d.namaIbu || '';
+        window._waIbu   = d.waIbu || '';
+        if(d.namaAnak){ const el=document.getElementById("f-nama"); if(el){el.value=d.namaAnak;el.disabled=true;el.style.opacity="0.8";} }
+        if(d.namaIbu){ const el=document.getElementById("f-ortu"); if(el){el.value=d.namaIbu;el.disabled=true;el.style.opacity="0.8";} }
+      }
+    }).catch(()=>{});
+  }
+
+  // Dukungan link lama (kalau masih ada yang beredar)
+  if(namaLegacy){ window._namaIbu = window._namaIbu || ibuLegacy || ''; window._waIbu = window._waIbu || waLegacy || '';
+    const el=document.getElementById("f-nama"); if(el){el.value=namaLegacy;el.disabled=true;el.style.opacity="0.8";} }
+  if(ibuLegacy){ const el=document.getElementById("f-ortu"); if(el){el.value=ibuLegacy;el.disabled=true;el.style.opacity="0.8";} }
+
   if(age && ['A','B','C','D'].includes(age)){
     setTimeout(()=>{ const btn=document.querySelector(`[data-age="${age}"]`); if(btn) btn.click(); },400);
   }
@@ -1230,7 +1263,13 @@ function loadFromURLParams() {
 // ── Override submitForm: tambah API call ──
 const _origSubmit = submitForm;
 function submitForm() {
-  _origSubmit && _origSubmit();
+  try {
+    _origSubmit && _origSubmit();
+  } catch(err) {
+    console.error('submitForm error:', err);
+    alert('Terjadi kendala saat menampilkan hasil. Silakan screenshot pesan ini dan hubungi tim: ' + err.message);
+    return;
+  }
   const genId=window._genId||'';
   if(genId){
     const skor=hitungSkor(answers,currentItems);
@@ -1240,6 +1279,8 @@ function submitForm() {
       namaIbu:window._namaIbu||document.getElementById("f-ortu").value||'',
       waIbu:window._waIbu||'',
       answers:JSON.stringify(answers)
+    }).then(r => {
+      if(!r || !r.ok) console.warn('Gagal simpan ke server:', r && r.error);
     }).catch(()=>{});
   }
 }
