@@ -178,6 +178,16 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
 .modal-actions{display:flex;gap:10px;margin-top:16px;}
 .modal-field{margin-bottom:14px;}
 
+/* PILIHAN JENIS TANDA TANGAN */
+.sig-option{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;background:var(--surface2);border:1.5px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;font-family:inherit;transition:all .15s;}
+.sig-option:hover{border-color:var(--accent);background:var(--accent-dim);}
+.sig-option-ic{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sig-option-ic svg{width:18px;height:18px;}
+.sig-ic-manual{background:var(--surface);color:var(--text2);border:1.5px solid var(--border2);}
+.sig-ic-digital{background:var(--accent-dim);color:var(--accent);}
+.sig-option-title{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:3px;}
+.sig-option-desc{font-size:11.5px;color:var(--text3);line-height:1.4;}
+
 /* SETUP BANNER */
 .setup-banner{background:var(--warning-dim);border:1.5px solid var(--warning);border-radius:var(--rl);padding:14px 16px;margin-bottom:14px;font-size:12.5px;color:var(--text);display:flex;gap:10px;align-items:flex-start;}
 .setup-banner svg{width:18px;height:18px;color:var(--warning);flex-shrink:0;margin-top:1px;}
@@ -504,6 +514,39 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   </div>
 </div>
 
+<!-- MODAL PILIH JENIS TANDA TANGAN (muncul setiap kali mau cetak/save PDF) -->
+<div id="signatureModal" class="modal-overlay">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+      Jenis Tanda Tangan
+    </div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px;">Pilih bagaimana kuitansi ini ditandatangani sebelum dicetak.</p>
+
+    <button class="sig-option" onclick="confirmPrintWithSignature('manual')">
+      <div class="sig-option-ic sig-ic-manual">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+      </div>
+      <div class="sig-option-text">
+        <div class="sig-option-title">Tanda Tangan Manual</div>
+        <div class="sig-option-desc">Kolom TTD dikosongkan — untuk ditandatangani basah setelah dicetak.</div>
+      </div>
+    </button>
+
+    <button class="sig-option" onclick="confirmPrintWithSignature('digital')">
+      <div class="sig-option-ic sig-ic-digital">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="sig-option-text">
+        <div class="sig-option-title">Tanda Tangan Digital</div>
+        <div class="sig-option-desc">Segel digital tercetak otomatis, bisa diverifikasi lewat QR di kuitansi.</div>
+      </div>
+    </button>
+
+    <button class="btn btn-ghost btn-full" onclick="closeSignatureModal()" style="margin-top:6px;">Batal</button>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 <div id="detailPopover" class="detail-popover"></div>
 
@@ -576,8 +619,9 @@ function buildInvoiceItemsDesc(inv) {
   if (typeof items === 'string') {
     try { items = JSON.parse(items); } catch(e) { items = []; }
   }
+  const anandaSuffix = inv.student_name ? ` atas nama Ananda ${inv.student_name}` : '';
   if (!items || !items.length) {
-    return `Pembayaran invoice ${inv.invoice_number}`;
+    return `Pembayaran invoice ${inv.invoice_number}${anandaSuffix}`;
   }
   const parts = items.map(it => {
     let s = (it.label || '').trim();
@@ -585,7 +629,7 @@ function buildInvoiceItemsDesc(inv) {
     if (it.dur) s += ' - ' + it.dur + ' Bulan';
     return s;
   }).filter(Boolean);
-  return 'Pembayaran untuk program ' + parts.join('; ');
+  return `Pembayaran untuk program pembelajaran ${parts.join('; ')}${anandaSuffix}`;
 }
 
 function quickFillRefInvoice() {
@@ -846,7 +890,7 @@ async function saveKuitansi(andPrint) {
     populateFilterBulan();
     renderList();
     showToast('Kuitansi tersimpan! ✓', true);
-    if (andPrint) printKuitansi(data);
+    if (andPrint) promptSignatureAndPrint(data);
     resetForm();
   } catch(e) {
     showToast('Gagal simpan: ' + e.message, false);
@@ -900,7 +944,7 @@ function renderList() {
       <div class="kw-row-right">
         <div class="kw-row-amt">${rp(k.jumlah)}</div>
         <div class="kw-row-actions">
-          <button class="btn-icon" title="Cetak ulang" onclick='event.stopPropagation();printKuitansi(${JSON.stringify(k).replace(/'/g,"&apos;")})'>
+          <button class="btn-icon" title="Cetak ulang" onclick='event.stopPropagation();promptSignatureAndPrint(${JSON.stringify(k).replace(/'/g,"&apos;")})'>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           </button>
           <button class="btn-icon" title="Edit" onclick="event.stopPropagation();openEdit('${k.__id}')">
@@ -950,7 +994,7 @@ function closeDetailModal() {
 }
 function detailModalPrint() {
   const k = kuitansiList.find(x => x.__id === detailModalId);
-  if (k) printKuitansi(k);
+  if (k) promptSignatureAndPrint(k);
 }
 function detailModalEdit() {
   const id = detailModalId;
@@ -1130,6 +1174,15 @@ body{display:flex;justify-content:center;padding:24px 0 40px;font-family:'Plus J
 .kw-penerima-name{font-size:12.5px;font-weight:700;color:#1c1c1c;}
 .kw-penerima-role{font-size:10.5px;font-weight:500;color:#7a7a7a;margin-top:2px;}
 
+/* TANDA TANGAN DIGITAL */
+.kw-digisign-stampwrap{height:22mm;display:flex;align-items:center;justify-content:center;}
+.kw-digisign-seal{position:relative;width:19mm;height:19mm;}
+.kw-digisign-seal svg{width:100%;height:100%;}
+.kw-digisign-line{border-bottom:1.4px solid #999;margin:3px 0 7px;}
+.kw-digisign-caption{display:inline-flex;align-items:center;gap:4px;background:#EAF4FF;color:#1B6CA8;font-size:8.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.02em;margin-top:5px;}
+.kw-digisign-caption svg{width:9px;height:9px;flex-shrink:0;}
+.kw-digisign-id{font-family:'Geist Mono',monospace;font-size:7.5px;color:#a8a8a8;margin-top:4px;letter-spacing:.02em;}
+
 .kw-footband{width:100%;line-height:0;margin-top:4mm;}
 .kw-footband-img{width:100%;display:block;}
 
@@ -1148,6 +1201,17 @@ function buildVerifyUrl(k) {
 function buildQrSrc(k) {
   const url = buildVerifyUrl(k);
   return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(url)}`;
+}
+
+// ID referensi tanda tangan digital — bukan kriptografi asli, cuma kode
+// tampilan unik & konsisten per kuitansi (bisa dicocokkan lewat QR di atas).
+function buildSignatureId(k) {
+  const str = `${k.no_kuitansi || ''}|${k.created_at || ''}|${k.penerima || ''}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return 'TTD-' + hash.toString(16).toUpperCase().padStart(8, '0');
 }
 
 function buildKuitansiHTML(k) {
@@ -1194,12 +1258,32 @@ function buildKuitansiHTML(k) {
       </div>
       <div class="kw-penerima-block">
         <div class="kw-penerima-lbl">PENERIMA</div>
+        ${k.signature_mode === 'digital' ? `
+        <div class="kw-digisign-stampwrap">
+          <div class="kw-digisign-seal">
+            <svg viewBox="0 0 100 100" fill="none">
+              <circle cx="50" cy="50" r="46" stroke="#1B6CA8" stroke-width="2" stroke-dasharray="4 3.2"/>
+              <circle cx="50" cy="50" r="37" fill="#EAF4FF"/>
+              <path d="M33 51 L44 62 L69 36" stroke="#1B6CA8" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+        <div class="kw-digisign-line"></div>
+        <div class="kw-penerima-name">${esc(k.penerima) || '&nbsp;'}</div>
+        ${k.created_by ? `<div class="kw-penerima-role">${esc(k.created_by)}</div>` : ''}
+        <div class="kw-digisign-caption">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Ditandatangani Digital
+        </div>
+        <div class="kw-digisign-id">${buildSignatureId(k)}</div>
+        ` : `
         <div class="kw-penerima-stampwrap">
           <img class="kw-stamp" src="${STAMP_SRC}" alt="" onerror="this.style.visibility='hidden'">
         </div>
         <div class="kw-penerima-line"></div>
         <div class="kw-penerima-name">${esc(k.penerima) || '&nbsp;'}</div>
         ${k.created_by ? `<div class="kw-penerima-role">${esc(k.created_by)}</div>` : ''}
+        `}
       </div>
     </div>
 
@@ -1207,6 +1291,27 @@ function buildKuitansiHTML(k) {
       <img class="kw-footband-img" src="${FOOTER_BANNER_SRC}" alt="" onerror="this.style.visibility='hidden'">
     </div>
   </div>`;
+}
+
+// ══════════════════════════════════════
+// PILIH JENIS TANDA TANGAN sebelum cetak (manual / digital)
+// ══════════════════════════════════════
+let _pendingPrintData = null;
+
+function promptSignatureAndPrint(k) {
+  _pendingPrintData = k;
+  document.getElementById('signatureModal').classList.add('open');
+}
+function closeSignatureModal() {
+  _pendingPrintData = null;
+  document.getElementById('signatureModal').classList.remove('open');
+}
+function confirmPrintWithSignature(mode) {
+  if (!_pendingPrintData) return;
+  const data = { ..._pendingPrintData, signature_mode: mode };
+  document.getElementById('signatureModal').classList.remove('open');
+  _pendingPrintData = null;
+  printKuitansi(data);
 }
 
 function printKuitansi(k) {
@@ -1446,6 +1551,7 @@ function showToast(msg, ok) {
 document.getElementById('deleteModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeDeleteModal(); });
 document.getElementById('editModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeEditModal(); });
 document.getElementById('detailModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeDetailModal(); });
+document.getElementById('signatureModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeSignatureModal(); });
 
 // ══════════════════════════════════════
 // VERIFIKASI KUITANSI (dipicu saat dibuka via ?verify=NO_KUITANSI dari scan QR)
