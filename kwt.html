@@ -105,6 +105,8 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
 .btn-icon:hover{background:var(--danger-dim);color:var(--danger);}
 .btn-full{width:100%;justify-content:center;}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.actions .btn[disabled]{opacity:.7;cursor:not-allowed;pointer-events:none;}
+.btn-ic.spin{animation:spin .8s linear infinite;}
 .actions .btn{flex:1;justify-content:center;min-width:120px;}
 
 /* TABLE / LIST */
@@ -218,6 +220,9 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
 .verify-row span:first-child{color:#8FA4B4;font-size:11.5px;}
 .verify-row span:last-child{font-weight:600;text-align:right;}
 .verify-close{margin-top:18px;width:100%;padding:11px;border-radius:10px;background:#1B6CA8;color:#fff;border:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+.verify-sig-block{text-align:left;background:#EAF4FF;border-radius:14px;padding:14px 16px;font-size:13px;color:#1C2B3A;margin-top:10px;}
+.verify-sig-head{display:flex;align-items:center;gap:6px;color:#1B6CA8;font-size:11.5px;font-weight:700;margin-bottom:8px;letter-spacing:.02em;}
+.verify-sig-block .verify-row{border-bottom-color:rgba(27,108,168,0.15);}
 </style>
 </head>
 <body>
@@ -396,16 +401,16 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
   </div>
 
   <div class="actions">
-    <button class="btn btn-ghost" onclick="resetForm()" title="Reset">
+    <button class="btn btn-ghost" id="btnReset" onclick="resetForm()" title="Reset">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
       <span class="btn-label">Reset</span>
     </button>
-    <button class="btn btn-accent" onclick="saveKuitansi(false)" title="Simpan">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    <button class="btn btn-accent" id="btnSimpan" onclick="saveKuitansi(false)" title="Simpan">
+      <svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       <span class="btn-label">Simpan</span>
     </button>
-    <button class="btn btn-success" onclick="saveKuitansi(true)" title="Simpan & Cetak PDF">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    <button class="btn btn-success" id="btnSimpanCetak" onclick="saveKuitansi(true)" title="Simpan & Cetak PDF">
+      <svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span class="btn-label">Simpan &amp; Cetak PDF</span>
     </button>
   </div>
@@ -466,7 +471,7 @@ input[readonly]{opacity:.75;cursor:not-allowed;}
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost btn-full" onclick="closeEditModal()">Batal</button>
-      <button class="btn btn-accent btn-full" onclick="submitEdit()">Simpan Perubahan</button>
+      <button class="btn btn-accent btn-full" id="btnSubmitEdit" onclick="submitEdit()">Simpan Perubahan</button>
     </div>
   </div>
 </div>
@@ -619,7 +624,7 @@ function buildInvoiceItemsDesc(inv) {
   if (typeof items === 'string') {
     try { items = JSON.parse(items); } catch(e) { items = []; }
   }
-  const anandaSuffix = inv.student_name ? ` atas nama Ananda ${inv.student_name}` : '';
+  const anandaSuffix = inv.student_name ? `\nAtas Nama Ananda: ${inv.student_name}` : '';
   if (!items || !items.length) {
     return `Pembayaran invoice ${inv.invoice_number}${anandaSuffix}`;
   }
@@ -877,12 +882,18 @@ function collectForm() {
   };
 }
 
+let _isSaving = false;
 async function saveKuitansi(andPrint) {
+  if (_isSaving) return; // cegah double-click / double-submit
+
   const data = collectForm();
   if (!data.no_kuitansi || !data.date || !data.diterima_dari || !data.jumlah || !data.untuk_pembayaran) {
     showToast('Lengkapi No, Tanggal, Diterima Dari, Jumlah, dan Untuk Pembayaran', false);
     return;
   }
+
+  _isSaving = true;
+  setSavingUI(true, andPrint);
   try {
     const res = await saveKuitansiToSheets(data);
     data.__id = res.id || res.__id;
@@ -894,6 +905,33 @@ async function saveKuitansi(andPrint) {
     resetForm();
   } catch(e) {
     showToast('Gagal simpan: ' + e.message, false);
+  } finally {
+    _isSaving = false;
+    setSavingUI(false, andPrint);
+  }
+}
+
+function setSavingUI(isSaving, andPrint) {
+  const btnReset = document.getElementById('btnReset');
+  const btnSimpan = document.getElementById('btnSimpan');
+  const btnSimpanCetak = document.getElementById('btnSimpanCetak');
+  const activeBtn = andPrint ? btnSimpanCetak : btnSimpan;
+  const otherBtn = andPrint ? btnSimpan : btnSimpanCetak;
+
+  [btnReset, btnSimpan, btnSimpanCetak].forEach(b => { if (b) b.disabled = isSaving; });
+
+  if (!activeBtn) return;
+  const label = activeBtn.querySelector('.btn-label');
+  const icon = activeBtn.querySelector('.btn-ic');
+  if (isSaving) {
+    activeBtn.dataset.origLabel = label.textContent;
+    label.textContent = 'Menyimpan…';
+    if (icon) icon.classList.add('spin');
+    if (otherBtn) otherBtn.style.opacity = '.5';
+  } else {
+    if (activeBtn.dataset.origLabel) label.textContent = activeBtn.dataset.origLabel;
+    if (icon) icon.classList.remove('spin');
+    if (otherBtn) otherBtn.style.opacity = '';
   }
 }
 
@@ -1079,7 +1117,9 @@ function openEdit(id) {
 function closeEditModal() { editingId = null; document.getElementById('editModal').classList.remove('open'); }
 document.getElementById('eJumlah').addEventListener('input', function(){ this.value = fmtThousand(this.value); });
 
+let _isSubmittingEdit = false;
 async function submitEdit() {
+  if (_isSubmittingEdit) return;
   const updates = {
     no_kuitansi: document.getElementById('eNo').value.trim(),
     ref_invoice: document.getElementById('eRef').value.trim(),
@@ -1093,6 +1133,9 @@ async function submitEdit() {
   if (!updates.no_kuitansi || !updates.date || !updates.diterima_dari || !updates.jumlah) {
     showToast('Lengkapi field wajib', false); return;
   }
+  const btn = document.getElementById('btnSubmitEdit');
+  _isSubmittingEdit = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan…'; }
   try {
     await updateKuitansiInSheets(editingId, updates);
     const idx = kuitansiList.findIndex(x => x.__id === editingId);
@@ -1103,6 +1146,9 @@ async function submitEdit() {
     showToast('Kuitansi diperbarui ✓', true);
   } catch(e) {
     showToast('Gagal update: ' + e.message, false);
+  } finally {
+    _isSubmittingEdit = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Simpan Perubahan'; }
   }
 }
 
@@ -1175,13 +1221,14 @@ body{display:flex;justify-content:center;padding:24px 0 40px;font-family:'Plus J
 .kw-penerima-role{font-size:10.5px;font-weight:500;color:#7a7a7a;margin-top:2px;}
 
 /* TANDA TANGAN DIGITAL */
-.kw-digisign-stampwrap{height:22mm;display:flex;align-items:center;justify-content:center;}
-.kw-digisign-seal{position:relative;width:19mm;height:19mm;}
-.kw-digisign-seal svg{width:100%;height:100%;}
-.kw-digisign-line{border-bottom:1.4px solid #999;margin:3px 0 7px;}
-.kw-digisign-caption{display:inline-flex;align-items:center;gap:4px;background:#EAF4FF;color:#1B6CA8;font-size:8.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.02em;margin-top:5px;}
+.kw-digisign-link{display:block;text-decoration:none;color:inherit;cursor:pointer;}
+.kw-digisign-stampwrap{display:flex;align-items:center;justify-content:center;padding-top:2mm;}
+.kw-digisign-qr-frame{padding:2mm;background:#fff;border:1.4px solid #1B6CA8;border-radius:4px;}
+.kw-digisign-qr{width:17mm;height:17mm;display:block;}
+.kw-digisign-caption{display:inline-flex;align-items:center;gap:4px;background:#EAF4FF;color:#1B6CA8;font-size:8.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.02em;margin-top:6px;}
 .kw-digisign-caption svg{width:9px;height:9px;flex-shrink:0;}
-.kw-digisign-id{font-family:'Geist Mono',monospace;font-size:7.5px;color:#a8a8a8;margin-top:4px;letter-spacing:.02em;}
+.kw-digisign-timestamp{font-size:8px;color:#8a8a8a;margin-top:4px;line-height:1.4;}
+.kw-digisign-id{font-family:'Geist Mono',monospace;font-size:7.5px;color:#a8a8a8;margin-top:2px;letter-spacing:.02em;}
 
 .kw-footband{width:100%;line-height:0;margin-top:4mm;}
 .kw-footband-img{width:100%;display:block;}
@@ -1212,6 +1259,25 @@ function buildSignatureId(k) {
     hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
   }
   return 'TTD-' + hash.toString(16).toUpperCase().padStart(8, '0');
+}
+
+// QR & link khusus tanda tangan digital — membawa info TTD (id, waktu, siapa)
+// di URL sehingga popup verifikasi bisa menampilkannya meski belum tersinkron.
+function buildSignVerifyUrl(k) {
+  const base = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams({
+    verify: k.no_kuitansi || '',
+    sig: '1',
+    sigId: buildSignatureId(k),
+    signedBy: k.penerima || '',
+    signedRole: k.created_by || '',
+    signedAt: k.created_at || new Date().toISOString(),
+  });
+  return `${base}?${params.toString()}`;
+}
+function buildSignQrSrc(k) {
+  const url = buildSignVerifyUrl(k);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(url)}`;
 }
 
 function buildKuitansiHTML(k) {
@@ -1259,23 +1325,21 @@ function buildKuitansiHTML(k) {
       <div class="kw-penerima-block">
         <div class="kw-penerima-lbl">PENERIMA</div>
         ${k.signature_mode === 'digital' ? `
-        <div class="kw-digisign-stampwrap">
-          <div class="kw-digisign-seal">
-            <svg viewBox="0 0 100 100" fill="none">
-              <circle cx="50" cy="50" r="46" stroke="#1B6CA8" stroke-width="2" stroke-dasharray="4 3.2"/>
-              <circle cx="50" cy="50" r="37" fill="#EAF4FF"/>
-              <path d="M33 51 L44 62 L69 36" stroke="#1B6CA8" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+        <a class="kw-digisign-link" href="${buildSignVerifyUrl(k)}" target="_blank" rel="noopener">
+          <div class="kw-digisign-stampwrap">
+            <div class="kw-digisign-qr-frame">
+              <img class="kw-digisign-qr" src="${buildSignQrSrc(k)}" alt="QR Verifikasi TTD" onerror="this.style.visibility='hidden'">
+            </div>
           </div>
-        </div>
-        <div class="kw-digisign-line"></div>
-        <div class="kw-penerima-name">${esc(k.penerima) || '&nbsp;'}</div>
-        ${k.created_by ? `<div class="kw-penerima-role">${esc(k.created_by)}</div>` : ''}
-        <div class="kw-digisign-caption">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          Ditandatangani Digital
-        </div>
-        <div class="kw-digisign-id">${buildSignatureId(k)}</div>
+          <div class="kw-penerima-name" style="margin-top:6px;">${esc(k.penerima) || '&nbsp;'}</div>
+          ${k.created_by ? `<div class="kw-penerima-role">${esc(k.created_by)}</div>` : ''}
+          <div class="kw-digisign-caption">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Ditandatangani Digital
+          </div>
+          <div class="kw-digisign-timestamp">Scan untuk lihat bukti &amp; detail TTD</div>
+          <div class="kw-digisign-id">${buildSignatureId(k)}</div>
+        </a>
         ` : `
         <div class="kw-penerima-stampwrap">
           <img class="kw-stamp" src="${STAMP_SRC}" alt="" onerror="this.style.visibility='hidden'">
@@ -1558,7 +1622,7 @@ document.getElementById('signatureModal').addEventListener('click', e => { if(e.
 // ══════════════════════════════════════
 function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-async function runVerification(no) {
+async function runVerification(no, sigInfo) {
   const overlay = document.getElementById('verifyOverlay');
   const card = document.getElementById('verifyCard');
   overlay.classList.add('show');
@@ -1575,6 +1639,17 @@ async function runVerification(no) {
     }
 
     if (found) {
+      const sigBlock = (sigInfo && sigInfo.sig) ? `
+        <div class="verify-sig-block">
+          <div class="verify-sig-head">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Ditandatangani Digital
+          </div>
+          <div class="verify-row"><span>Ditandatangani Oleh</span><span>${escHtml(sigInfo.signedBy || found.penerima || '—')}${sigInfo.signedRole ? ' · '+escHtml(sigInfo.signedRole) : ''}</span></div>
+          <div class="verify-row"><span>Pada</span><span>${fmtTimestamp(sigInfo.signedAt)}</span></div>
+          <div class="verify-row"><span>ID Tanda Tangan</span><span>${escHtml(sigInfo.sigId || '—')}</span></div>
+        </div>
+      ` : '';
       card.innerHTML = `
         <div class="verify-icon ok">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1586,8 +1661,10 @@ async function runVerification(no) {
           <div class="verify-row"><span>Tanggal</span><span>${fmtDateLong(found.date)}</span></div>
           <div class="verify-row"><span>Diterima Dari</span><span>${escHtml(found.diterima_dari)}</span></div>
           <div class="verify-row"><span>Jumlah</span><span>${rp(found.jumlah)}</span></div>
+          <div class="verify-row"><span>Untuk Pembayaran</span><span>${escHtml(found.untuk_pembayaran || '—')}</span></div>
           <div class="verify-row"><span>Penerima</span><span>${escHtml(found.penerima || '—')}</span></div>
         </div>
+        ${sigBlock}
         <button class="verify-close" onclick="window.location.href=window.location.pathname">Tutup</button>
       `;
     } else {
@@ -1623,8 +1700,17 @@ document.addEventListener('DOMContentLoaded', () => {
   initDetailPopoverEvents();
   loadInvoiceRefList();
 
-  const verifyNo = new URLSearchParams(window.location.search).get('verify');
-  if (verifyNo) runVerification(verifyNo);
+  const qs = new URLSearchParams(window.location.search);
+  const verifyNo = qs.get('verify');
+  if (verifyNo) {
+    runVerification(verifyNo, {
+      sig: qs.get('sig'),
+      sigId: qs.get('sigId'),
+      signedBy: qs.get('signedBy'),
+      signedRole: qs.get('signedRole'),
+      signedAt: qs.get('signedAt'),
+    });
+  }
 });
 </script>
 </body>
