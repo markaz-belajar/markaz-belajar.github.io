@@ -1209,7 +1209,7 @@ body{display:flex;justify-content:center;padding:24px 0 40px;font-family:'Plus J
 .kw-terbilang-sentence{background:#f4f0e6;border-radius:6px;padding:9px 12px;font-style:italic;font-weight:500;font-size:13.5px;color:#333;line-height:1.5;}
 .kw-fval-border{border:1px solid #b8b8b8;border-radius:8px;padding:10px 12px;min-height:16mm;font-weight:500;line-height:1.55;}
 
-.kw-bottomrow{display:flex;justify-content:space-between;align-items:flex-end;padding:6mm 10mm 4mm;gap:10mm;}
+.kw-bottomrow{display:flex;justify-content:space-between;align-items:flex-start;padding:6mm 10mm 4mm;gap:10mm;}
 .kw-rp-block{flex:1;max-width:80mm;}
 .kw-rp-val{background:#f4f0e6;border-radius:6px;padding:9px 12px;font-family:'Geist Mono',monospace;font-size:16px;font-weight:800;}
 .kw-penerima-block{text-align:center;width:52mm;flex-shrink:0;}
@@ -1319,6 +1319,7 @@ function buildKuitansiHTML(k) {
 
     <div class="kw-bottomrow">
       <div class="kw-rp-block">
+        <div class="kw-penerima-lbl">JUMLAH DIBAYAR</div>
         <div class="kw-rp-val">${rp(k.jumlah)}</div>
         <div class="kw-timestamp">Dibuat ${fmtTimestamp(k.created_at)}</div>
       </div>
