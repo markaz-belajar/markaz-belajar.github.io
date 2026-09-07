@@ -610,7 +610,11 @@ async function loadInvoiceRefList() {
 function populateRefInvoiceDropdown() {
   const statusLabel = { paid: '✓ Lunas', unpaid: 'Belum Bayar', installment: 'Cicilan' };
   const opts = invoiceRefList.map((inv, idx) => {
-    const who = inv.student_parent || inv.student_name || '';
+    const parent = inv.student_parent || '';
+    const child = inv.student_name || '';
+    let who;
+    if (parent && child) who = `${parent} (Ananda: ${child})`;
+    else who = parent || child || '';
     const st = statusLabel[inv.payment_status] || inv.payment_status || '';
     return `<option value="${esc(inv.invoice_number)}" data-idx="${idx}">${esc(inv.invoice_number)} · ${esc(who)} · ${rp(inv.amount)}${st ? ' · '+esc(st) : ''}</option>`;
   }).join('');
@@ -951,6 +955,15 @@ function populateFilterBulan() {
   sel.value = cur;
 }
 
+// Ekstrak nama anak (Ananda) dari teks "Untuk Pembayaran" — supaya di daftar
+// Riwayat & dropdown, admin bisa langsung tahu ini transaksi anak yang mana,
+// bukan cuma nama orang tua/pembayarnya.
+function extractAnandaName(text) {
+  if (!text) return '';
+  const m = text.match(/Atas Nama Ananda:\s*(.+)/i);
+  return m ? m[1].trim() : '';
+}
+
 function renderList() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   const bulan = document.getElementById('filterBulan').value;
@@ -971,13 +984,18 @@ function renderList() {
     </div>`;
     return;
   }
-  wrap.innerHTML = list.map(k => `
+  wrap.innerHTML = list.map(k => {
+    const ananda = extractAnandaName(k.untuk_pembayaran);
+    const subText = ananda
+      ? `${fmtDateShort(k.date)} · Ananda: ${ananda}`
+      : `${fmtDateShort(k.date)} · ${(k.untuk_pembayaran||'').slice(0,44)}${(k.untuk_pembayaran||'').length>44?'…':''}`;
+    return `
     <div class="kw-row" onclick="handleRowTap(event,'${k.__id}')">
       <div class="kw-row-main">
         <div class="kw-row-no">${k.no_kuitansi}</div>
         <div class="kw-row-amt-m">${rp(k.jumlah)}</div>
         <div class="kw-row-name">${k.diterima_dari}</div>
-        <div class="kw-row-sub" data-detail-id="${k.__id}">${fmtDateShort(k.date)} · ${(k.untuk_pembayaran||'').slice(0,44)}${(k.untuk_pembayaran||'').length>44?'…':''}</div>
+        <div class="kw-row-sub" data-detail-id="${k.__id}">${subText}</div>
       </div>
       <div class="kw-row-right">
         <div class="kw-row-amt">${rp(k.jumlah)}</div>
@@ -995,7 +1013,8 @@ function renderList() {
       </div>
       <svg class="kw-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function handleRowTap(e, id) {
